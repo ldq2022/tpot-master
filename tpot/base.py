@@ -705,8 +705,12 @@ class TPOTBase(BaseEstimator):
         else:
             total_evals = self._lambda * self.generations + self.population_size
 
-        self._pbar = tqdm(total=total_evals, unit='pipeline', leave=False, file=self.log_file,
-                          disable=not (self.verbosity >= 2), desc='Optimization Progress')
+        self._pbar = tqdm(total=total_evals,
+                          unit='pipeline',
+                          leave=False,
+                          file=self.log_file,
+                          disable=not (self.verbosity >= 2),
+                          desc='Optimization Progress')
 
         try:
             with warnings.catch_warnings():

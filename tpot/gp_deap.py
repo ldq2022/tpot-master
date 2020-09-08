@@ -22,8 +22,14 @@ You should have received a copy of the GNU Lesser General Public
 License along with TPOT. If not, see <http://www.gnu.org/licenses/>.
 
 """
-
+import datetime
+import copy
 import numpy as np
+import jsonpickle # pip install jsonpickle
+import json
+import pprint
+import re
+
 from deap import tools, gp
 from inspect import isclass
 from .operator_utils import set_sample_weight
@@ -170,6 +176,45 @@ def initialize_stats_dict(individual):
     individual.statistics['predecessor'] = 'ROOT',
 
 
+# def log_ind_to_file(ind):
+#     with open("log.txt", "a") as f:
+#         f.write(str(ind))
+#
+# def log_string_to_file(str):
+#     with open("log.txt", "a") as f:
+#         f.write(str)
+#
+# def log_data_to_json_file(data):
+#     with open("log.json", "a") as f:
+#         json.dump(data, f)
+
+def log_nicely_to_file(data):
+    with open("log.txt", "a") as f:
+        pprint.pprint(data, width=200, stream=f)
+
+def log_population_nicely_to_file(population, gen=0):
+    my_stats = []
+    for ind in population:
+        my_stats.append(ind)
+
+    serialized = jsonpickle.encode(my_stats)
+    data = json.loads(serialized)
+
+    i = 0
+    for ind in my_stats:
+        data[i]['Generation #'] = str(gen)
+        data[i]['Pipeline'] = clean_pipeline_string(ind)
+        i += 1
+
+    log_nicely_to_file(data)
+
+def log_empty_space_to_file():
+    with open("log.txt", "a") as f:
+        f.write("\n")
+        f.write("--------------------------------------------------------------------------------------------")
+        f.write("\n")
+        f.write("\n")
+
 def eaMuPlusLambda(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, pbar,
                    stats=None, halloffame=None, verbose=0, per_generation_function=None):
     """This is the :math:`(\mu + \lambda)` evolutionary algorithm.
@@ -219,18 +264,26 @@ def eaMuPlusLambda(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, pbar,
     logbook = tools.Logbook()
     logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
 
+
     # Initialize statistics dict for the individuals in the population, to keep track of mutation/crossover operations and predecessor relations
     for ind in population:
         initialize_stats_dict(ind)
+
+    log_population_nicely_to_file(copy.deepcopy(population))
+    log_empty_space_to_file()
 
     population[:] = toolbox.evaluate(population)
 
     record = stats.compile(population) if stats is not None else {}
     logbook.record(gen=0, nevals=len(population), **record)
 
+
+
+
+
     # Begin the generational process
     for gen in range(1, ngen + 1):
-        print("g")
+
         # Vary the population
         offspring = varOr(population, toolbox, lambda_, cxpb, mutpb)
 
@@ -248,13 +301,19 @@ def eaMuPlusLambda(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, pbar,
 
         # Select the next generation population
         population[:] = toolbox.select(population + offspring, mu)
+        log_population_nicely_to_file(copy.deepcopy(population), gen)
+        log_empty_space_to_file()
 
         # pbar process
         if not pbar.disable:
             # Print only the best individual fitness
             if verbose == 2:
                 high_score = max(halloffame.keys[x].wvalues[1] for x in range(len(halloffame.keys)))
-                pbar.fp.write('\nGeneration {0} - Current best internal CV score: {1}'.format(gen, high_score))
+                pbar.fp.write('\nGeneration {0} - Current best internal CV score: {1}\n'.format(gen, high_score))
+                # pbar.fp.write('    Pipelines: \n')
+                # for ind in population:
+                #     pbar.fp.write('    {0}\n'.format(clean_pipeline_string(ind)))
+
 
             # Print the entire Pareto front
             elif verbose == 3:
@@ -457,3 +516,27 @@ def _wrapped_cross_val_score(sklearn_pipeline, features, target,
             return "Timeout"
         except Exception as e:
             return -float('inf')
+
+def clean_pipeline_string(individual):
+    """Provide a string of the individual without the parameter prefixes.
+
+    Parameters
+    ----------
+    individual: individual
+        Individual which should be represented by a pretty string
+
+    Returns
+    -------
+    A string like str(individual), but with parameter prefixes removed.
+
+    """
+    dirty_string = str(individual)
+    # There are many parameter prefixes in the pipeline strings, used solely for
+    # making the terminal name unique, eg. LinearSVC__.
+    parameter_prefixes = [(m.start(), m.end()) for m in re.finditer(', [\w]+__', dirty_string)]
+    # We handle them in reverse so we do not mess up indices
+    pretty = dirty_string
+    for (start, end) in reversed(parameter_prefixes):
+        pretty = pretty[:start + 2] + pretty[end:]
+
+    return pretty
