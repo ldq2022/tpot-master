@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.feature_selection import SelectFwe, f_classif
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import MinMaxScaler
 from sklearn.impute import SimpleImputer
 
 # NOTE: Make sure that the outcome column is labeled 'target' in the data file
@@ -17,10 +17,10 @@ imputer.fit(training_features)
 training_features = imputer.transform(training_features)
 testing_features = imputer.transform(testing_features)
 
-# Average CV score on the training set was: 0.851079460269865
+# Average CV score on the training set was: 0.8751173708920188
 exported_pipeline = make_pipeline(
-    SelectFwe(score_func=f_classif, alpha=0.038),
-    GradientBoostingClassifier(learning_rate=0.1, max_depth=1, max_features=0.45, min_samples_leaf=2, min_samples_split=10, n_estimators=100, subsample=0.1)
+    MinMaxScaler(),
+    RandomForestClassifier(bootstrap=True, criterion="gini", max_features=0.8500000000000001, min_samples_leaf=8, min_samples_split=15, n_estimators=100)
 )
 
 exported_pipeline.fit(training_features, training_target)
