@@ -8,7 +8,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.impute import SimpleImputer
 
-
+from joblib import dump, load
 
 features = genfromtxt('features.csv', delimiter=',')
 target = genfromtxt('labels.csv', delimiter=',')
@@ -21,6 +21,13 @@ imputer = SimpleImputer(strategy="median")
 imputer.fit(features)
 training_features = imputer.transform(training_features)
 testing_features = imputer.transform(testing_features)
+
+# ------------ save this split and imputed data for load_pipeline.py to use --------------
+np.savetxt("training_features_imputed.csv", training_features, delimiter=",")
+np.savetxt("testing_features_imputed.csv", testing_features, delimiter=",")
+np.savetxt("training_target_imputed.csv", training_target, delimiter=",")
+np.savetxt("testing_target_imputed.csv", testing_target, delimiter=",")
+
 
 # Average CV score on the training set was: 0.8751173708920188
 exported_pipeline = make_pipeline(
@@ -37,8 +44,8 @@ diff = results - testing_target  # comparing predicted label and the target
 num_of_errors = np.sum(np.absolute(diff))   # count wrong predictions
 print("Num of prediction errors: ", num_of_errors)
 
-pickled_pip = pickle.dumps(exported_pipeline)
-reloaded_pip = pickle.loads(pickled_pip)
+dump(exported_pipeline, 'exported_pipeline.joblib')
+reloaded_pip = load('exported_pipeline.joblib')
 results2 = reloaded_pip.predict(testing_features)
 
 diff2 = results2 - testing_target  # comparing predicted label and the target

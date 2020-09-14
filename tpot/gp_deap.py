@@ -41,7 +41,7 @@ from sklearn.base import clone
 from collections import defaultdict
 import warnings
 from stopit import threading_timeoutable, TimeoutException
-
+from joblib import dump, load
 
 def pick_two_individuals_eligible_for_crossover(population):
     """Pick two individuals from the population which can do crossover, that is, they share a primitive.
@@ -499,7 +499,21 @@ def _wrapped_cross_val_score(sklearn_pipeline, features, target,
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore')
-                scores = [_fit_and_score(estimator=clone(sklearn_pipeline),
+                # scores = [_fit_and_score(estimator=clone(sklearn_pipeline),
+                #                          X=features,
+                #                          y=target,
+                #                          scorer=scorer,
+                #                          train=train,
+                #                          test=test,
+                #                          verbose=0,
+                #                          parameters=None,
+                #                          error_score='raise',
+                #                          fit_params=sample_weight_dict)
+                #                     for train, test in cv_iter]
+
+                scores = []
+                for train, test in cv_iter:
+                    score_and_estimator = _fit_and_score(estimator=clone(sklearn_pipeline),
                                          X=features,
                                          y=target,
                                          scorer=scorer,
@@ -508,8 +522,19 @@ def _wrapped_cross_val_score(sklearn_pipeline, features, target,
                                          verbose=0,
                                          parameters=None,
                                          error_score='raise',
-                                         fit_params=sample_weight_dict)
-                                    for train, test in cv_iter]
+                                         fit_params=sample_weight_dict,
+                                         return_estimator=True)
+
+
+                    if score_and_estimator:
+                        if len(score_and_estimator) == 2:
+                            score = [score_and_estimator[0]]
+                            estimator = score_and_estimator[1]
+                            scores.append(score)
+                            dump(estimator, 'exported_pipelines/exported_pipeline{0}.joblib'.format(str(score)))
+
+
+
             CV_score = np.array(scores)[:, 0]
             return np.nanmean(CV_score)
         except TimeoutException:
