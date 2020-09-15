@@ -29,6 +29,8 @@ import jsonpickle # pip install jsonpickle
 import json
 import pprint
 import re
+import uuid
+import pickle
 
 from deap import tools, gp
 from inspect import isclass
@@ -41,7 +43,7 @@ from sklearn.base import clone
 from collections import defaultdict
 import warnings
 from stopit import threading_timeoutable, TimeoutException
-from joblib import dump, load
+
 
 def pick_two_individuals_eligible_for_crossover(population):
     """Pick two individuals from the population which can do crossover, that is, they share a primitive.
@@ -494,49 +496,48 @@ def _wrapped_cross_val_score(sklearn_pipeline, features, target,
         scores = [cv_results['split{}_test_score'.format(i)]
                   for i in range(n_splits)]
         CV_score = dask.delayed(np.array)(scores)[:, 0]
-        return dask.delayed(np.nanmean)(CV_score)
+        # TODO add dask model later
+        return dask.delayed(np.nanmean)(CV_score), None
     else:
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore')
-                # scores = [_fit_and_score(estimator=clone(sklearn_pipeline),
-                #                          X=features,
-                #                          y=target,
-                #                          scorer=scorer,
-                #                          train=train,
-                #                          test=test,
-                #                          verbose=0,
-                #                          parameters=None,
-                #                          error_score='raise',
-                #                          fit_params=sample_weight_dict)
-                #                     for train, test in cv_iter]
 
+                # get all scores and associating pipelines
                 scores = []
+                estimators = []
                 for train, test in cv_iter:
                     score_and_estimator = _fit_and_score(estimator=clone(sklearn_pipeline),
-                                         X=features,
-                                         y=target,
-                                         scorer=scorer,
-                                         train=train,
-                                         test=test,
-                                         verbose=0,
-                                         parameters=None,
-                                         error_score='raise',
-                                         fit_params=sample_weight_dict,
-                                         return_estimator=True)
+                                                         X=features,
+                                                         y=target,
+                                                         scorer=scorer,
+                                                         train=train,
+                                                         test=test,
+                                                         verbose=0,
+                                                         parameters=None,
+                                                         error_score='raise',
+                                                         fit_params=sample_weight_dict,
+                                                         return_estimator=True)
 
+                    score = [score_and_estimator[0]]
+                    estimator = score_and_estimator[1]
+                    scores.append(score)
+                    estimators.append(estimator)
 
-                    if score_and_estimator:
-                        if len(score_and_estimator) == 2:
-                            score = [score_and_estimator[0]]
-                            estimator = score_and_estimator[1]
-                            scores.append(score)
-                            dump(estimator, 'exported_pipelines/exported_pipeline{0}.joblib'.format(str(score)))
-
-
-
+            # get the avg score and the pipeline whose score is closest to it
+            # TODO: may use binary search
             CV_score = np.array(scores)[:, 0]
-            return np.nanmean(CV_score)
+            cv_score_mean = np.nanmean(CV_score)
+            closest_idx = 0
+            min_dist = abs(scores[0][0] - cv_score_mean)
+            for i in range(len(scores)):
+                score = scores[i][0]
+                min_dist = min(min_dist, abs(score - cv_score_mean))
+                if min_dist == abs(score - cv_score_mean):
+                    closest_idx = i
+
+            return cv_score_mean, estimators[closest_idx]
+
         except TimeoutException:
             return "Timeout"
         except Exception as e:

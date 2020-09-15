@@ -374,7 +374,7 @@ def test_timeout():
         y=training_target_r,
     )
     cv = model_selection._split.check_cv(cv, training_target_r, classifier=False)
-    return_value = _wrapped_cross_val_score(tpot_obj.fitted_pipeline_,
+    return_value, estimator = _wrapped_cross_val_score(tpot_obj.fitted_pipeline_,
                                             training_features_r,
                                             training_target_r,
                                             cv=cv,
@@ -423,7 +423,7 @@ def test_invalid_pipeline():
         training_target,
         classifier=False  # choice of classifier vs. regressor here is arbitrary
     )
-    return_value = _wrapped_cross_val_score(tpot_obj.fitted_pipeline_,
+    return_value, estimator = _wrapped_cross_val_score(tpot_obj.fitted_pipeline_,
                                             training_features,
                                             training_target,
                                             cv=cv,

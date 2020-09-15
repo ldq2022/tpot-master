@@ -35,6 +35,8 @@ from multiprocessing import cpu_count
 import os
 import re
 import errno
+import pickle
+import uuid
 
 from tempfile import mkdtemp
 from shutil import rmtree
@@ -1228,7 +1230,7 @@ class TPOTBase(BaseEstimator):
             if total_mins_elapsed >= self.max_time_mins:
                 raise KeyboardInterrupt('{:.2f} minutes have elapsed. TPOT will close down.'.format(total_mins_elapsed))
 
-    def _combine_individual_stats(self, operator_count, cv_score, individual_stats):
+    def _combine_individual_stats(self, operator_count, cv_score, individual_stats, model_path):
         """Combine the stats with operator count and cv score and preprare to be written to _evaluated_individuals
 
         Parameters
@@ -1255,6 +1257,7 @@ class TPOTBase(BaseEstimator):
         stats = deepcopy(individual_stats)  # Deepcopy, since the string reference to predecessor should be cloned
         stats['operator_count'] = operator_count
         stats['internal_cv_score'] = cv_score
+        stats['model_path'] = model_path
         return stats
 
     def _evaluate_individuals(self, population, features, target, sample_weight=None, groups=None):
@@ -1306,6 +1309,7 @@ class TPOTBase(BaseEstimator):
         )
 
         result_score_list = []
+        model_path_list = []
 
         try:
             # check time limit before pipeline evaluation
@@ -1314,8 +1318,15 @@ class TPOTBase(BaseEstimator):
             if self._n_jobs == 1 and not self.use_dask:
                 for sklearn_pipeline in sklearn_pipeline_list:
                     self._stop_by_max_time_mins()
-                    val = partial_wrapped_cross_val_score(sklearn_pipeline=sklearn_pipeline)
+                    val, estimator = partial_wrapped_cross_val_score(sklearn_pipeline=sklearn_pipeline)
+
+                    model_path_dir = 'exported_pipelines/' + str(uuid.uuid1())
+                    os.makedirs(model_path_dir)
+                    model_path = model_path_dir + '/model.pkl'
+                    with open(model_path, 'wb') as f:
+                        pickle.dump(estimator, f)
                     result_score_list = self._update_val(val, result_score_list)
+                    model_path_list.append(model_path)
             else:
                 # chunk size for pbar update
                 if self.use_dask:
@@ -1328,10 +1339,12 @@ class TPOTBase(BaseEstimator):
                     self._stop_by_max_time_mins()
                     if self.use_dask:
                         import dask
-                        tmp_result_scores = [
-                            partial_wrapped_cross_val_score(sklearn_pipeline=sklearn_pipeline)
-                            for sklearn_pipeline in sklearn_pipeline_list[chunk_idx:chunk_idx + chunk_size]
-                        ]
+                        # TODO if use dask need to add dump model
+                        tmp_result_scores = []
+                        for sklearn_pipeline in sklearn_pipeline_list[chunk_idx:chunk_idx + chunk_size]:
+                            score, estimator = partial_wrapped_cross_val_score(sklearn_pipeline=sklearn_pipeline)
+                            tmp_result_scores.append(score)
+
 
                         self.dask_graphs_ = tmp_result_scores
                         with warnings.catch_warnings():
@@ -1339,7 +1352,7 @@ class TPOTBase(BaseEstimator):
                             tmp_result_scores = list(dask.compute(*tmp_result_scores))
 
                     else:
-
+                        # TODO if use dask need to add dump model
                         parallel = Parallel(n_jobs=self._n_jobs, verbose=0, pre_dispatch='2*n_jobs')
                         tmp_result_scores = parallel(
                             delayed(partial_wrapped_cross_val_score)(sklearn_pipeline=sklearn_pipeline)
@@ -1371,7 +1384,7 @@ class TPOTBase(BaseEstimator):
             self._pop = population
             raise KeyboardInterrupt
 
-        self._update_evaluated_individuals_(result_score_list, eval_individuals_str, operator_counts, stats_dicts)
+        self._update_evaluated_individuals_(result_score_list, model_path_list, eval_individuals_str, operator_counts, stats_dicts)
 
         for ind in individuals:
             ind_str = str(ind)
@@ -1425,14 +1438,16 @@ class TPOTBase(BaseEstimator):
             if not len(individual): # a pipeline cannot be randomly generated
                 self.evaluated_individuals_[individual_str] = self._combine_individual_stats(5000.,
                                                                                              -float('inf'),
-                                                                                             individual.statistics)
+                                                                                             individual.statistics,
+                                                                                             "")
                 self._update_pbar(pbar_msg='Invalid pipeline encountered. Skipping its evaluation.')
                 continue
             sklearn_pipeline_str = generate_pipeline_code(expr_to_tree(individual, self._pset), self.operators)
             if sklearn_pipeline_str.count('PolynomialFeatures') > 1:
                 self.evaluated_individuals_[individual_str] = self._combine_individual_stats(5000.,
                                                                                              -float('inf'),
-                                                                                             individual.statistics)
+                                                                                             individual.statistics,
+                                                                                             "")
                 self._update_pbar(pbar_msg='Invalid pipeline encountered. Skipping its evaluation.')
             # Check if the individual was evaluated before
             elif individual_str in self.evaluated_individuals_:
@@ -1451,7 +1466,8 @@ class TPOTBase(BaseEstimator):
                 except Exception:
                     self.evaluated_individuals_[individual_str] = self._combine_individual_stats(5000.,
                                                                                                  -float('inf'),
-                                                                                                 individual.statistics)
+                                                                                                 individual.statistics,
+                                                                                                 "")
                     self._update_pbar()
                     continue
                 eval_individuals_str.append(individual_str)
@@ -1459,7 +1475,7 @@ class TPOTBase(BaseEstimator):
 
         return operator_counts, eval_individuals_str, sklearn_pipeline_list, stats_dicts
 
-    def _update_evaluated_individuals_(self, result_score_list, eval_individuals_str, operator_counts, stats_dicts):
+    def _update_evaluated_individuals_(self, result_score_list, model_path_list, eval_individuals_str, operator_counts, stats_dicts):
         """Update self.evaluated_individuals_ and error message during pipeline evaluation.
 
         Parameters
@@ -1478,11 +1494,12 @@ class TPOTBase(BaseEstimator):
         -------
         None
         """
-        for result_score, individual_str in zip(result_score_list, eval_individuals_str):
+        for result_score, model_path, individual_str in zip(result_score_list, model_path_list, eval_individuals_str):
             if type(result_score) in [float, np.float64, np.float32]:
                 self.evaluated_individuals_[individual_str] = self._combine_individual_stats(operator_counts[individual_str],
                                                                                              result_score,
-                                                                                             stats_dicts[individual_str])
+                                                                                             stats_dicts[individual_str],
+                                                                                             model_path)
             else:
                 raise ValueError('Scoring function does not return a float.')
 
