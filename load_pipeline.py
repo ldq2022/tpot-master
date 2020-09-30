@@ -20,6 +20,7 @@ testing_target = genfromtxt('testing_target_imputed.csv', delimiter=',')
 files = os.listdir(os.getcwd() + '/exported_pipelines')
 for file in files:
     reloaded_pip = pickle.load(open('exported_pipelines/'+file, 'rb'))
+
     results = reloaded_pip.predict(testing_features)
     diff = results - testing_target  # comparing predicted label and the target
     num_of_errors = np.sum(np.absolute(diff))   # count wrong predictions

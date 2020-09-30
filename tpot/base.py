@@ -40,6 +40,7 @@ import uuid
 
 from tempfile import mkdtemp
 from shutil import rmtree
+from pathlib import Path
 
 import numpy as np
 from pandas import DataFrame
@@ -1321,7 +1322,8 @@ class TPOTBase(BaseEstimator):
                     val, estimator = partial_wrapped_cross_val_score(sklearn_pipeline=sklearn_pipeline)
 
                     model_path_dir = 'exported_pipelines/' + str(uuid.uuid1())
-                    os.makedirs(model_path_dir)
+                    Path(model_path_dir).mkdir(parents=True)
+
                     model_path = model_path_dir + '/model.pkl'
                     with open(model_path, 'wb') as f:
                         pickle.dump(estimator, f)

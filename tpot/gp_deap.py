@@ -22,15 +22,10 @@ You should have received a copy of the GNU Lesser General Public
 License along with TPOT. If not, see <http://www.gnu.org/licenses/>.
 
 """
-import datetime
 import copy
 import numpy as np
-import jsonpickle # pip install jsonpickle
-import json
-import pprint
 import re
-import uuid
-import pickle
+import warnings
 
 from deap import tools, gp
 from inspect import isclass
@@ -41,7 +36,7 @@ from sklearn.model_selection._validation import _fit_and_score
 
 from sklearn.base import clone
 from collections import defaultdict
-import warnings
+
 from stopit import threading_timeoutable, TimeoutException
 
 
@@ -178,44 +173,7 @@ def initialize_stats_dict(individual):
     individual.statistics['predecessor'] = 'ROOT',
 
 
-# def log_ind_to_file(ind):
-#     with open("log.txt", "a") as f:
-#         f.write(str(ind))
-#
-# def log_string_to_file(str):
-#     with open("log.txt", "a") as f:
-#         f.write(str)
-#
-# def log_data_to_json_file(data):
-#     with open("log.json", "a") as f:
-#         json.dump(data, f)
 
-def log_nicely_to_file(data):
-    with open("log.txt", "a") as f:
-        pprint.pprint(data, width=200, stream=f)
-
-def log_population_nicely_to_file(population, gen=0):
-    my_stats = []
-    for ind in population:
-        my_stats.append(ind)
-
-    serialized = jsonpickle.encode(my_stats)
-    data = json.loads(serialized)
-
-    i = 0
-    for ind in my_stats:
-        data[i]['Generation #'] = str(gen)
-        data[i]['Pipeline'] = clean_pipeline_string(ind)
-        i += 1
-
-    log_nicely_to_file(data)
-
-def log_empty_space_to_file():
-    with open("log.txt", "a") as f:
-        f.write("\n")
-        f.write("--------------------------------------------------------------------------------------------")
-        f.write("\n")
-        f.write("\n")
 
 def eaMuPlusLambda(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, pbar,
                    stats=None, halloffame=None, verbose=0, per_generation_function=None):
@@ -271,14 +229,11 @@ def eaMuPlusLambda(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, pbar,
     for ind in population:
         initialize_stats_dict(ind)
 
-    log_population_nicely_to_file(copy.deepcopy(population))
-    log_empty_space_to_file()
 
     population[:] = toolbox.evaluate(population)
 
     record = stats.compile(population) if stats is not None else {}
     logbook.record(gen=0, nevals=len(population), **record)
-
 
 
 
@@ -303,8 +258,6 @@ def eaMuPlusLambda(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, pbar,
 
         # Select the next generation population
         population[:] = toolbox.select(population + offspring, mu)
-        log_population_nicely_to_file(copy.deepcopy(population), gen)
-        log_empty_space_to_file()
 
         # pbar process
         if not pbar.disable:
@@ -542,6 +495,7 @@ def _wrapped_cross_val_score(sklearn_pipeline, features, target,
             return "Timeout"
         except Exception as e:
             return -float('inf')
+
 
 def clean_pipeline_string(individual):
     """Provide a string of the individual without the parameter prefixes.

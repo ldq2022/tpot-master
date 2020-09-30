@@ -3,16 +3,16 @@ from tpot import TPOTClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.utils import Bunch
 from tabulate import tabulate
+from pathlib import Path
 import pickle
 import pandas as pd
 import os
 import shutil
 
-# create new log file
-with open("log.txt", "w") as f:
-    f.write('')
+
 # create new path to save pipelines
-shutil.rmtree('exported_pipelines', ignore_errors=False, onerror=None)
+if Path('exported_pipelines').exists():
+    shutil.rmtree('exported_pipelines', ignore_errors=False, onerror=None)
 
 
 features = genfromtxt('features.csv', delimiter=',')
@@ -22,7 +22,7 @@ tpot = TPOTClassifier(generations=3,
                       population_size=4,
                       verbosity=2,
                       max_time_mins=2,
-                      template="Transformer-Classifier")
+                      template="Selector-Classifier")
 
 tpot.fit(features, target)
 # print(tpot.score(X_test, y_test))
